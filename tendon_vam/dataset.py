@@ -1,17 +1,19 @@
 """双腕部相机配对数据集。
 
-数据约定（每个 recording 一个文件夹）::
+数据约定（每个 recording 一个文件夹，实际 ADS 数据布局）::
 
     data/recording_YYYYMMDD_HHMMSS/
+        ads_data.csv                        # 原始无表头运动学（367 列，~335 Hz）
+        left_endo_YYYYMMDD_HHMMSS_H.264.mp4   # 1920x1080 @ 60 fps
+        right_endo_YYYYMMDD_HHMMSS_H.264.mp4
         left_endo_frames/  img_000000.jpg   # extract_frames.py 产出
         right_endo_frames/ img_000000.jpg
-        kinematics.csv     (可选) t, l_px,l_py,l_pz,l_qw,l_qx,l_qy,l_qz,l_grip,
-                                  r_px,r_py,r_pz,r_qw,r_qx,r_qy,r_qz,r_grip,
-                                  endo_px,endo_py,endo_pz
+        kinematics.csv     convert_ads.py 产出：t, l_px..l_grip, r_px..r_grip
+                            （无 endo_* 列时自动退化为相对自身增量动作）
         subtasks.json      (可选) 人工子任务标注
 
 - HL 训练：只需视频帧 + subtasks.json（纯视频模仿）。
-- LL/VAM 训练：还需要 kinematics.csv（生成 hybrid-relative 动作块）。
+- LL/VAM 训练：还需要 kinematics.csv（由 ads_data.csv 转换，生成 hybrid-relative 动作块）。
 """
 from __future__ import annotations
 
@@ -221,6 +223,12 @@ class PairedVideoDataset(Dataset):
 
                 T = c.action.chunk
                 times = t + np.arange(T + 1) / rec.fps
+                # 内窥镜参考位置（腕部相机数据无此列 → 用零向量，等价于相对自身增量动作）
+                if all(k in kin for k in ("endo_px", "endo_py", "endo_pz")):
+                    endo = np.stack([[at("endo_px", tt), at("endo_py", tt),
+                                      at("endo_pz", tt)] for tt in times])
+                else:
+                    endo = np.zeros((len(times), 3))
                 arms = {}
                 for arm in ("l", "r"):
                     pos = np.stack(
@@ -232,9 +240,7 @@ class PairedVideoDataset(Dataset):
                     grip = np.array([at(f"{arm}_grip", tt) for tt in times])
                     arms[arm] = (
                         make_hybrid_relative_actions(
-                            pos, quat_to_6d(quat),
-                            np.stack([[at("endo_px", tt), at("endo_py", tt),
-                                       at("endo_pz", tt)] for tt in times]), grip),
+                            pos, quat_to_6d(quat), endo, grip),
                         np.concatenate([pos[0], quat_to_6d(quat)[0], grip[:1]]),
                     )
                 # (chunk, 2*10)：两臂动作块拼接

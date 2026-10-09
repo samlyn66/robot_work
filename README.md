@@ -30,22 +30,47 @@ Language-Conditioned Imitation Learning*（Kim et al., arXiv:2505.10251）与
 子任务集合（技术方案定义的 6 阶段）：
 `idle / 持针(grasp_needle) / 进针(insert) / 出针(exit) / 拉线(pull) / 打结(knot) / 剪线(cut)`
 
-## 数据目录约定
+## 数据目录约定（实际 ADS 数据布局）
 
 ```
 data/
-  recording_20260826_162504/
-    left_endo/*.mp4          # 左腕部相机视频（原始）
-    right_endo/*.mp4         # 右腕部相机视频
-    kinematics.csv           # 可选：末端位姿/关节角/夹持（训练 LL 时必需）
-    subtasks.json            # 子任务标注（label 工具生成，训练 HL 时必需）
+  recording_20260826_172240/
+    ads_data.csv                          # 原始无表头运动学（367 列，~335 Hz）
+    left_endo_20260826_172246_H.264.mp4   # 左腕部相机 1920x1080 @ 60 fps
+    right_endo_20260826_172246_H.264.mp4  # 右腕部相机
+    left_endo_frames/   img_000000.jpg    # extract_frames.py 产出
+    right_endo_frames/  img_000000.jpg
+    kinematics.csv                         # convert_ads.py 产出（30 Hz 对齐视频时间轴）
+    subtasks.json                          # 子任务标注（label 工具生成，训练 HL 时必需）
 ```
+
+### ads_data.csv 列映射（数值逆向分析结论）
+
+数据无官方字段说明，列映射由 `scripts/inspect_ads.py` 自动分析确定
+（在 recording_20260826_172240 上验证，全部可在 `configs/default.yaml` 的 `ads:` 段修改）：
+
+| 语义 | 列号 | 依据 |
+|---|---|---|
+| 主臂（疑左）末端位置 | 12-14 | 运动幅度最大（span 1.95/1.24/3.87），四元数无符号跳变 |
+| 主臂末端姿态 (w,x,y,z) | 15-18 | 连续 4 列范数 ≡ 1 |
+| 主臂夹爪 | 43 | 缝合过程 ~28 次大开合，连续值 |
+| 副臂（疑右）末端位置 | 167-169 | 第二大运动流（span 1.21/0.52/0.52） |
+| 副臂末端姿态 | 170-173 | 四元数块 |
+| 副臂夹爪 | 133 | ~22 次大开合，245 个离散值 |
+
+- 时间对齐：CSV 无时间戳列，按「CSV 行数 / 视频帧数」比例对齐
+  （实测 114059 行 ÷ 20404 帧 = 5.59，CSV 时长 ≈ 视频时长 340 s，误差 <1%）。
+- 夹爪值域随批次而异，`convert_ads.py` 全数据集统一归一化到 [0,1]。
+- **左右臂与视频画面的对应关系建议人工核对**：播放视频对照两臂运动，
+  若相反，交换 `default.yaml` 中 `ads.arm0` / `ads.arm1` 即可。
+- 本数据无内窥镜位姿流（纯腕部相机方案），动作表示自动退化为
+  相对自身起点的增量动作（等价于 SRT hybrid-relative 在固定参考系下的形式）。
 
 标注文件格式（`subtasks.json`）：
 
 ```json
 {
-  "fps_original": 30,
+  "fps_original": 60,
   "events": [
     {"t_start": 12.4, "t_end": 30.1, "phase": "grasp_needle"},
     {"t_start": 30.1, "t_end": 46.0, "phase": "insert"}
@@ -58,22 +83,28 @@ data/
 ```bash
 pip install -r requirements.txt
 
-# 1. 抽帧（对 18 组视频，双相机按统一目标帧率抽帧并对齐）
+# 0.（新数据先体检）自动分析 ads_data.csv 列结构 / 采样率 / 夹爪候选
+python scripts/inspect_ads.py --rec data/recording_20260826_172240
+
+# 1. ADS 运动学转换：ads_data.csv → kinematics.csv（按视频时间轴对齐，30 Hz）
+python scripts/convert_ads.py --config configs/default.yaml --data_root data
+
+# 2. 抽帧（双相机按统一目标帧率抽帧并对齐，60fps → 10fps）
 python scripts/extract_frames.py --data_root data --fps 10
 
-# 2. 子任务标注（半自动：分段打点，生成 subtasks.json）
-python scripts/make_subtask_labels.py --recording data/recording_20260826_162504
+# 3. 子任务标注（半自动：分段打点，生成 subtasks.json）
+python scripts/make_subtask_labels.py --recording data/recording_20260826_172240
 
-# 3. 训练高层子任务规划器（纯视频即可训练）
+# 4. 训练高层子任务规划器（纯视频即可训练）
 python scripts/train_hl.py --config configs/default.yaml
 
-# 4. 训练低层策略（LL: SRT-H 风格 ACT）—— 需要运动学数据
+# 5. 训练低层策略（LL: SRT-H 风格 ACT）—— 需要运动学数据
 python scripts/train_ll.py --config configs/default.yaml
 
-# 5. 训练完整 VAM（视频骨干 + 潜在视觉计划 + Flow Matching 动作解码器）
+# 6. 训练完整 VAM（视频骨干 + 潜在视觉计划 + Flow Matching 动作解码器）
 python scripts/train_vam.py --config configs/default.yaml
 
-# 6. 评估 / 可视化（在留出视频上滚动预测子任务与动作块）
+# 7. 评估 / 可视化（在留出视频上滚动预测子任务与动作块）
 python scripts/evaluate.py --config configs/default.yaml --ckpt runs/hl/best.pt
 ```
 
@@ -90,7 +121,8 @@ python scripts/evaluate.py --config configs/default.yaml --ckpt runs/hl/best.pt
 tendon_vam_project/
 ├── configs/default.yaml          # 全部超参
 ├── tendon_vam/
-│   ├── config.py                 # 配置加载
+│   ├── config.py                 # 配置加载（含 ads 列映射）
+│   ├── ads_io.py                 # ADS 原始数据读取 / 列映射 / 视频时间对齐
 │   ├── dataset.py                # 双相机配对数据集 + hybrid-relative 动作生成
 │   ├── video_encoder.py          # 共享视觉编码器 + 局部去噪潜在视觉计划
 │   ├── hl_policy.py              # 高层子任务规划器（SRT-H 式）
@@ -98,6 +130,8 @@ tendon_vam_project/
 │   ├── flow_decoder.py           # Flow Matching 动作解码器 + 时空对齐
 │   └── utils.py                  # 6D 旋转、插值、损失等
 ├── scripts/
+│   ├── inspect_ads.py            # ADS 数据列结构自动分析（无表头 CSV 逆向）
+│   ├── convert_ads.py            # ads_data.csv → kinematics.csv 转换与对齐
 │   ├── extract_frames.py         # 视频抽帧与双相机对齐
 │   ├── make_subtask_labels.py    # 子任务标注工具（键盘打点）
 │   ├── train_hl.py               # 训练高层规划器

@@ -1,16 +1,25 @@
-"""对 18 组录像抽帧：left_endo / right_endo → 统一帧率 jpg 序列。
+"""对录像抽帧：left_endo* / right_endo* → 统一帧率 jpg 序列。
 
 用法::
 
     python scripts/extract_frames.py --data_root data --fps 10
 
-- 两个相机按各自原始 FPS 计算时间索引，以最近帧对齐（误差 <= 0.5 原始帧）。
-- 输出到 recording/left_endo_frames、right_endo_frames。
-- 若两路帧数不一致（录制起始时刻差），以较短一路为准并打印告警。
+适配实际数据布局（视频直接位于 recording 根目录，文件名带时间戳后缀）::
+
+    recording_xxx/
+        left_endo_20260826_172246_H.264.mp4    (1920x1080 @ ~60 fps)
+        right_endo_20260826_172246_H.264.mp4
+        ads_data.csv
+
+- 按各自原始 FPS 计算目标时刻，最近帧对齐；
+- 输出到 recording/left_endo_frames、right_endo_frames；
+- 两路帧数不一致时以较短一路为准（数据集侧处理）并打印告警；
+- 已有抽帧结果默认跳过（--overwrite 强制重抽）。
 """
 from __future__ import annotations
 
 import argparse
+import glob as globmod
 import os
 import sys
 
@@ -21,7 +30,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VIDEO_EXT = (".mp4", ".avi", ".mov", ".mkv", ".mts")
 
 
-def extract(video_path: str, out_dir: str, target_fps: float) -> int:
+def find_videos(rroot: str, pattern: str):
+    hits = []
+    for ext in VIDEO_EXT:
+        hits += globmod.glob(os.path.join(rroot, pattern.replace(".mp4", ext)))
+    return sorted(set(hits))
+
+
+def extract(video_path: str, out_dir: str, target_fps: float,
+            max_frames: int = 0) -> int:
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"[跳过] 无法打开 {video_path}")
@@ -29,20 +46,23 @@ def extract(video_path: str, out_dir: str, target_fps: float) -> int:
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     n_src = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     os.makedirs(out_dir, exist_ok=True)
-    times = []
-    t, step = 0.0, 1.0 / target_fps
-    while t * src_fps < n_src:
-        times.append(t)
-        t += step
     count = 0
-    for tt in times:
-        cap.set(cv2.CAP_PROP_POS_MSEC, tt * 1000.0)
+    # 顺序读取 + 按时间戳采样的抽帧（比逐帧 seek 快一个量级）
+    step = src_fps / target_fps
+    next_pick = 0.0
+    fi = 0
+    while True:
         ok, frame = cap.read()
         if not ok:
             break
-        cv2.imwrite(os.path.join(out_dir, f"img_{count:06d}.jpg"), frame,
-                    [cv2.IMWRITE_JPEG_QUALITY, 92])
-        count += 1
+        if fi >= next_pick - 1e-6:
+            cv2.imwrite(os.path.join(out_dir, f"img_{count:06d}.jpg"), frame,
+                        [cv2.IMWRITE_JPEG_QUALITY, 92])
+            count += 1
+            next_pick += step
+            if max_frames and count >= max_frames:
+                break
+        fi += 1
     cap.release()
     return count
 
@@ -51,6 +71,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_root", default="data")
     ap.add_argument("--fps", type=float, default=10.0)
+    ap.add_argument("--max_frames", type=int, default=0, help="测试用：最多抽取帧数")
+    ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
 
     for name in sorted(os.listdir(args.data_root)):
@@ -59,18 +81,20 @@ def main():
             continue
         counts = {}
         for cam in ("left_endo", "right_endo"):
-            cam_dir = os.path.join(rroot, cam)
-            if not os.path.isdir(cam_dir):
-                continue
-            vids = [f for f in sorted(os.listdir(cam_dir))
-                    if f.lower().endswith(VIDEO_EXT)]
+            out_dir = os.path.join(rroot, f"{cam}_frames")
+            vids = find_videos(rroot, f"{cam}*")
             if not vids:
                 continue
-            out_dir = os.path.join(rroot, f"{cam}_frames")
+            if os.path.isdir(out_dir) and os.listdir(out_dir) and not args.overwrite:
+                counts[cam] = len([f for f in os.listdir(out_dir)
+                                   if f.endswith((".jpg", ".png"))])
+                continue
             total = 0
             for v in vids:
-                total += extract(os.path.join(cam_dir, v), out_dir, args.fps)
+                total += extract(v, out_dir, args.fps, args.max_frames)
             counts[cam] = total
+        if not counts:
+            continue
         if len(counts) == 2 and abs(counts["left_endo"] - counts["right_endo"]) > 2:
             print(f"[告警] {name}: 双相机帧数不一致 "
                   f"L={counts['left_endo']} R={counts['right_endo']}，"

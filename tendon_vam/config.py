@@ -90,6 +90,28 @@ class TrainCfg:
 
 
 @dataclass
+class ArmCfg:
+    pos_cols: List[int] = field(default_factory=lambda: [12, 13, 14])
+    quat_cols: List[int] = field(default_factory=lambda: [15, 16, 17, 18])
+    gripper_col: int = 43
+
+
+@dataclass
+class AdsCfg:
+    csv_name: str = "ads_data.csv"
+    left_video_glob: str = "*left_endo*.mp4"
+    right_video_glob: str = "*right_endo*.mp4"
+    video_fps: float = 60.0
+    quat_order: str = "wxyz"
+    arm0: ArmCfg = field(default_factory=ArmCfg)
+    arm1: ArmCfg = field(default_factory=lambda: ArmCfg(
+        pos_cols=[167, 168, 169], quat_cols=[170, 171, 172, 173], gripper_col=133))
+    align: str = "frame_ratio"
+    out_rate: float = 30.0
+    fix_quat_sign: bool = True
+
+
+@dataclass
 class Config:
     data: DataCfg = field(default_factory=DataCfg)
     task: TaskCfg = field(default_factory=TaskCfg)
@@ -98,6 +120,7 @@ class Config:
     ll: LLCfg = field(default_factory=LLCfg)
     vam: VAMCfg = field(default_factory=VAMCfg)
     train: TrainCfg = field(default_factory=TrainCfg)
+    ads: AdsCfg = field(default_factory=AdsCfg)
 
 
 def load_config(path: str) -> Config:
@@ -113,11 +136,18 @@ def load_config(path: str) -> Config:
             ("ll", LLCfg),
             ("vam", VAMCfg),
             ("train", TrainCfg),
+            ("ads", AdsCfg),
         ]:
             if section in raw:
                 cur = getattr(cfg, section)
                 for k, v in raw[section].items():
-                    if hasattr(cur, k):
+                    if isinstance(v, dict) and hasattr(cur, k):
+                        # 嵌套子配置（如 ads.arm0）
+                        sub = getattr(cur, k)
+                        for kk, vv in v.items():
+                            if hasattr(sub, kk):
+                                setattr(sub, kk, vv)
+                    elif hasattr(cur, k):
                         setattr(cur, k, v)
     if not cfg.task.corrections:
         from . import PHASES

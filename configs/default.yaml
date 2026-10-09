@@ -1,8 +1,35 @@
 # 肌腱吻合分层模仿 VAM 默认配置
 # 与《面向肌腱吻合的分层模仿视频-动作模型》技术方案及 SRT-H 论文对齐
 
+# ---- ADS 原始数据（recording_xxx/ads_data.csv，无表头，367 列）----
+# 列映射由 scripts/inspect_ads.py 自动分析得出（在 recording_20260826_172240 上验证）：
+#   - 4 组连续四元数块属于左/主臂（cols 12-39），其中 cols 12-18 (pos3+quat4) 运动幅度最大
+#     且四元数无符号翻转 → 主臂末端实测位姿
+#   - cols 167-173 (pos3+quat4) 是另一条大幅运动流 → 副臂末端位姿
+#   - cols 43 / 133 分别为两臂夹爪开合候选列（连续值，缝合过程有 ~28/22 次大开合）
+# 左右臂与视频画面的对应关系请用 inspect_ads.py 的逐帧回放核对后，必要时交换 arm0/arm1。
+ads:
+  csv_name: ads_data.csv
+  # 视频文件名匹配模式（实际文件带时间戳后缀，如 left_endo_20260826_172246_H.264.mp4）
+  left_video_glob: "*left_endo*.mp4"
+  right_video_glob: "*right_endo*.mp4"
+  video_fps: 60                    # 原始视频帧率（H.264 1920x1080）
+  quat_order: wxyz                 # 四元数分量顺序
+  arm0:                            # 主臂（疑似左臂，块 A1）
+    pos_cols: [12, 13, 14]
+    quat_cols: [15, 16, 17, 18]
+    gripper_col: 43
+  arm1:                            # 副臂（疑似右臂，块 C2）
+    pos_cols: [167, 168, 169]
+    quat_cols: [170, 171, 172, 173]
+    gripper_col: 133
+  # CSV 无时间戳列：按「CSV 行数 / 视频帧数」比例对齐（两者同时起录，误差 <1%）
+  align: frame_ratio
+  out_rate: 30                     # kinematics.csv 输出采样率 (Hz)
+  fix_quat_sign: true              # 消除四元数双覆盖符号跳变，保证 6D 连续
+
 data:
-  root: data                      # 数据根目录（recording_xxx/{left_endo,right_endo}）
+  root: data                      # 数据根目录（recording_xxx/{ads_data.csv,left_endo*.mp4,right_endo*.mp4}）
   frame_rate: 10                  # 抽帧目标帧率 (Hz)，LL 控制频率
   hl_history: 4                   # HL 观测历史帧数（SRT-H: k=4）
   hl_history_stride_sec: 1.0      # HL 历史帧间隔（SRT-H: 1 s）
