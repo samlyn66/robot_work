@@ -1,0 +1,82 @@
+# 肌腱吻合分层模仿 VAM 默认配置
+# 与《面向肌腱吻合的分层模仿视频-动作模型》技术方案及 SRT-H 论文对齐
+
+data:
+  root: data                      # 数据根目录（recording_xxx/{left_endo,right_endo}）
+  frame_rate: 10                  # 抽帧目标帧率 (Hz)，LL 控制频率
+  hl_history: 4                   # HL 观测历史帧数（SRT-H: k=4）
+  hl_history_stride_sec: 1.0      # HL 历史帧间隔（SRT-H: 1 s）
+  hl_frame_size: 224
+  ll_frame_size: 224
+  val_recordings: []              # 留出录像名列表；为空时自动按 80/20 划分
+  seed: 42
+
+task:
+  # 6 个缝合阶段 + idle（技术方案：持针/进针/出针/拉线/打结/剪线）
+  phases: [idle, grasp_needle, insert, exit, pull, knot, cut]
+  # SRT-H 式纠正指令（18 类方向动作，双臂）
+  corrections:
+    - close_left_gripper
+    - close_right_gripper
+    - open_left_gripper
+    - open_right_gripper
+    - move_left_left
+    - move_left_right
+    - move_left_towards
+    - move_left_away
+    - move_left_up
+    - move_left_down
+    - move_right_left
+    - move_right_right
+    - move_right_towards
+    - move_right_away
+    - move_right_up
+    - move_right_down
+    - close_both_grippers
+    - open_both_grippers
+
+action:
+  dim_per_arm: 10                 # 平移3 + 6D旋转6 + 夹爪1（hybrid-relative, SRT 论文）
+  num_arms: 2
+  chunk: 20                       # 动作分块长度：10Hz x 2s（SRT-H: k=60@30Hz）
+  use_6d_rotation: true
+
+hl:
+  dim: 384
+  depth: 6
+  heads: 8
+  center_crop: [0.5, 0.8]         # 中心裁剪：宽度内 50%，高度下 80%（SRT-H）
+  l1_loss_weight: 0.4             # 任务 CE × L1 类距（SRT-H Eq.1）
+  flag_loss_weight: 0.3
+  corr_loss_weight: 0.3
+  predict_offset_sec: 0.5         # 预测 0.5s 未来的子任务（SRT-H 训练技巧）
+  dropout: 0.1
+
+ll:
+  backbone: efficientnet_b3       # SRT-H LL 视觉编码器
+  dim: 512
+  depth: 6
+  heads: 8
+  cam_dropout: 0.07               # 随机丢弃一路相机输入（SRT-H）
+  fiLM: true                      # FiLM 语言调制
+
+vam:
+  video_backbone: efficientnet_b0 # 共享视觉编码器（可换 VideoMAE/V-JEPA）
+  latent_dim: 256
+  partial_denoise_t: 0.6          # 局部去噪：只积分到中间流时间 s=t（<1 即中止）
+  flow_steps: 10                  # 推理 Euler 积步步数
+  align_heads: 4                  # 显式时空对齐 cross-attention
+  align_layers: 2
+  ema: 0.999
+
+train:
+  batch_size: 8
+  lr: 1.0e-4
+  weight_decay: 0.05
+  epochs_hl: 60
+  epochs_ll: 300
+  epochs_vam: 300
+  warmup_epochs: 3
+  amp: true
+  num_workers: 4
+  out_dir: runs

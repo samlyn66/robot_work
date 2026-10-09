@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Data & artifacts (do NOT upload to GitHub)
+data/
+outputs/
+checkpoints/
+runs/
+*.zip
+*.pth
+*.pt
+*.ckpt
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
