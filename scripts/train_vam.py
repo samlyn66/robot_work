@@ -19,9 +19,13 @@ import sys
 # SSLKEYLOGFILE 指向系统盘根目录（如 C:\nss_ssl_sfagent.log），
 # 导入 torch/ssl 时会尝试写入导致 PermissionError；不可写则重定向。
 _klf = os.environ.get("SSLKEYLOGFILE")
-if _klf and not os.access(_klf, os.W_OK):
-    os.environ["SSLKEYLOGFILE"] = os.path.join(
-        os.environ.get("TEMP", os.getcwd()), "ssl_keylog.log")
+if _klf:
+    try:  # 真实试写（Windows 的 os.access 不可靠：不查 ACL/文件锁）
+        with open(_klf, "a"):
+            pass
+    except OSError:
+        os.environ["SSLKEYLOGFILE"] = os.path.join(
+            os.environ.get("TEMP", os.getcwd()), "ssl_keylog.log")
 
 import torch
 from torch.utils.data import DataLoader
