@@ -15,6 +15,14 @@ import argparse
 import os
 import sys
 
+# 兼容性补丁：部分装有 SSL VPN 安全客户端的 Windows 机器会设置
+# SSLKEYLOGFILE 指向系统盘根目录（如 C:\nss_ssl_sfagent.log），
+# 导入 torch/ssl 时会尝试写入导致 PermissionError；不可写则重定向。
+_klf = os.environ.get("SSLKEYLOGFILE")
+if _klf and not os.access(_klf, os.W_OK):
+    os.environ["SSLKEYLOGFILE"] = os.path.join(
+        os.environ.get("TEMP", os.getcwd()), "ssl_keylog.log")
+
 import torch
 from torch.utils.data import DataLoader
 

@@ -1,6 +1,7 @@
 # DEPLOY.md — Windows 服务器部署与运行指南（robot_work）
 
 > 本指南对应 **Windows 服务器**，与当前实际状态一致：
+>
 > - 项目目录：`C:\Users\服务器1\robot_work`（代码在仓库根目录，即 robot_work 就是项目根）
 > - conda 环境：`tendon311`（Python 3.11，位于 `D:\anaconda\envs\tendon311`）
 > - PyTorch 2.5.1 已装好，`torch.cuda.is_available() == True` ✅
@@ -44,6 +45,7 @@ scp -P 端口 -r "C:\Users\25965\Desktop\dataset" 用户名@服务器IP:"C:/User
 ```
 
 要点：
+
 - 目标路径用**正斜杠 `/`** 并加引号
 - recording 文件夹必须直接位于 `data\` 下
 - 传完在服务器上确认：
@@ -63,7 +65,6 @@ dir C:\Users\服务器1\robot_work\data
 cd C:\Users\服务器1\robot_work
 
 # 3.1 数据体检：自动分析无表头 CSV 的列结构，核对列映射
-python scripts\inspect_ads.py --rec data\recording_20260826_172240
 
 # 3.2 运动学转换：ads_data.csv -> kinematics.csv（含时间对齐、四元数修复）
 python scripts\convert_ads.py --config configs\default.yaml --data_root data
@@ -135,14 +136,14 @@ python scripts\evaluate.py --config configs\default.yaml --ckpt runs\hl\best.pt
 
 ## 常见问题（Windows 版）
 
-| 问题 | 解决 |
-|---|---|
-| `conda activate` 报 "无法加载 profiles" | 执行一次 `conda init powershell`，重开终端 |
-| clone / pip 超时 | clone 加镜像前缀 `https://ghproxy.net/https://github.com/...`；pip 加清华镜像 `-i https://pypi.tuna.tsinghua.edu.cn/simple` |
-| `python` 指向错误环境 | 终端右上角切换解释器到 `tendon311`，或重新 `conda activate tendon311` |
-| 标注窗口弹不出 | 用 RDP/向日葵等图形会话登录服务器再跑 |
-| 训练被远程断连打断 | 用方案 B 的 `Start-Process` 方式重跑；日志在 `runs\*.log` |
-| 路径含空格报错 | 全部加引号；保持数据放 `data\` 下即可 |
+| 问题                                 | 解决                                                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `conda activate` 报 "无法加载 profiles" | 执行一次 `conda init powershell`，重开终端                                                                                |
+| clone / pip 超时                     | clone 加镜像前缀 `https://ghproxy.net/https://github.com/...`；pip 加清华镜像 `-i https://pypi.tuna.tsinghua.edu.cn/simple` |
+| `python` 指向错误环境                    | 终端右上角切换解释器到 `tendon311`，或重新 `conda activate tendon311`                                                           |
+| 标注窗口弹不出                            | 用 RDP/向日葵等图形会话登录服务器再跑                                                                                            |
+| 训练被远程断连打断                          | 用方案 B 的 `Start-Process` 方式重跑；日志在 `runs\*.log`                                                                    |
+| 路径含空格报错                            | 全部加引号；保持数据放 `data\` 下即可                                                                                          |
 
 ---
 
