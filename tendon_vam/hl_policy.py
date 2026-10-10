@@ -60,9 +60,19 @@ class HighLevelPolicy(nn.Module):
         """frames: (B, 1+K, 3, H, W) → tokens (B, (1+K)*49, dim)。"""
         B, T = frames.shape[:2]
         x = frames.reshape(B * T, *frames.shape[2:])
-        f = self.backbone(x)                      # (B*T, 768, 7, 7)
-        f = f.flatten(2).transpose(1, 2)          # (B*T, 49, 768)
-        f = self.proj(f).reshape(B, T * self.grid * self.grid, -1)
+        f = self.backbone(x)
+        # 兼容两种布局：torchvision 新版 Swin features 输出 channels-last
+        # (B*T, H, W, 768)；NCHW (B*T, 768, H, W) 走老路径
+        if f.ndim == 4 and f.shape[-1] == 768:
+            f = f.flatten(1, 2)                   # (B*T, H*W, 768)
+        else:
+            f = f.flatten(2).transpose(1, 2)      # (B*T, H*W, 768)
+        assert f.shape[-1] == 768, f"backbone 输出维度异常: {tuple(f.shape)}"
+        f = self.proj(f)                          # (B*T, H*W, dim)
+        g = f.shape[1] ** 0.5
+        assert g == int(g), f"特征图非方形: {f.shape[1]}"
+        g = int(g)
+        f = f.reshape(B, T * g * g, -1)
         # 正弦位置编码（时序 + 空间展平，SRT-H 用 sinusoidal PE）
         pos = self._sin_pos(f.shape[1], f.shape[2], device=f.device)
         return f + pos[None]
