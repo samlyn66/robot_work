@@ -62,8 +62,10 @@ class SpatioTemporalAlign(nn.Module):
         x = action_queries
         for dec in self.layers:
             # TransformerDecoderLayer 不直接支持 attention bias，
-            # 通过把先验加入 memory 的加性 key 实现等价软化：
-            att_mem = video_latents + bias.unsqueeze(0).unsqueeze(-1) * 0.01
+            # 通过把先验加入 memory 的加性 key 实现等价软化。
+            # 加性 key 只能依赖视频 token 索引 j，故对 query 维 K 取均值
+            # 压成 (T,)，避免 (K,T) 与 (B,T,D) 的广播冲突。
+            att_mem = video_latents + bias.mean(dim=0)[None, :, None] * 0.01
             x = dec(x, att_mem)
         return x
 
@@ -83,6 +85,8 @@ class FlowMatchingActionDecoder(nn.Module):
         self.instr_embed = nn.Embedding(num_instr, D)
         self.proprio_proj = nn.Linear(2 * 10, D)
         self.plan_proj = nn.Linear(video_dim, D)
+        # 视频逐帧潜在 → 解码器维度（对齐 cross-attention 的 d_model = D）
+        self.video_proj = nn.Linear(video_dim, D)
 
         self.align = SpatioTemporalAlign(D, cfg.vam.align_heads,
                                          cfg.vam.align_layers, video_T)
@@ -145,7 +149,7 @@ class FlowMatchingActionDecoder(nn.Module):
         q = self.action_queries[None].expand(B, -1, -1)
         q = q + self._embed_time(self.K, q.shape[-1], device)[None]
         if video_latents is not None:
-            cond_mem = self.align(q, video_latents)
+            cond_mem = self.align(q, self.video_proj(video_latents))
         else:
             cond_mem = cond[:, None, :].expand(-1, self.K, -1) + \
                 self._embed_time(self.K, cond.shape[-1], device)[None]
@@ -172,7 +176,7 @@ class FlowMatchingActionDecoder(nn.Module):
         q = self.action_queries[None].expand(B, -1, -1)
         q = q + self._embed_time(self.K, q.shape[-1], device)[None]
         if video_latents is not None:
-            cond_mem = self.align(q, video_latents)
+            cond_mem = self.align(q, self.video_proj(video_latents))
         else:
             cond_mem = cond[:, None, :].expand(-1, self.K, -1) + \
                 self._embed_time(self.K, cond.shape[-1], device)[None]
