@@ -110,7 +110,8 @@ def main():
                     cond_mask > 0, z_ctx, torch.zeros_like(z_ctx))
                 proprio = batch["proprio"].to(device)
                 # 无运动学样本用零动作（被 mask 掉，不产生梯度噪声）
-                actions = batch["actions"].to(device) * cond_mask[:, None, None]
+                # 注意 cond_mask 已是 (B,1)：actions 用 [:, :, None] 得 (B,1,1)
+                actions = batch["actions"].to(device) * cond_mask[:, :, None]
                 l_flow = decoder.compute_loss(
                     z_plan_ctx, proprio * cond_mask[:, :, None],
                     batch["phase"].to(device), batch["flag"].to(device),
