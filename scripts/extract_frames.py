@@ -35,7 +35,8 @@ def find_videos(rroot: str, pattern: str):
     hits = []
     for ext in VIDEO_EXT:
         hits += globmod.glob(os.path.join(rroot, pattern.replace(".mp4", ext)))
-    return sorted(set(hits))
+    # 只保留真实文件，排除同名输出文件夹（如 left_endo_frames）
+    return sorted({h for h in hits if os.path.isfile(h)})
 
 
 def extract(video_path: str, out_dir: str, target_fps: float,
