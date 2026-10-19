@@ -43,11 +43,15 @@ from tendon_vam.hl_policy import HighLevelPolicy  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
+    ap.add_argument("--data_root", default=None,
+                    help="覆盖 config 里的 data.root")
     ap.add_argument("--ckpt", default="runs/hl/best.pt")
     ap.add_argument("--recording", default=None, help="指定留出录像名；默认全部无标注录像")
     ap.add_argument("--out", default="outputs")
     args = ap.parse_args()
     cfg = load_config(args.config)
+    if args.data_root:
+        cfg.data.root = args.data_root
     device = "cuda" if torch.cuda.is_available() else "cpu"
     os.makedirs(args.out, exist_ok=True)
 

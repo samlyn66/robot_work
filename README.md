@@ -80,32 +80,41 @@ data/
 
 ## 快速开始
 
+**18 条完整数据（服务器 `C:\data\gczjj`）推荐流程**——一条命令跑完体检+转换+抽帧：
+
+```bash
+python scripts/run_pipeline.py --data_root C:\data\gczjj --fps 10
+```
+
+然后标注 3~5 条（每条约 1 分钟），再训练（`--data_root` 直指数据目录，不必改 config）：
+
+```bash
+python scripts/make_subtask_labels.py --recording C:\data\gczjj\recording_xxx
+python scripts/train_hl.py  --config configs/default.yaml --data_root C:\data\gczjj
+python scripts/train_ll.py  --config configs/default.yaml --data_root C:\data\gczjj
+python scripts/train_vam.py --config configs/default.yaml --data_root C:\data\gczjj
+python scripts/evaluate.py  --config configs/default.yaml --ckpt runs/hl/best.pt --data_root C:\data\gczjj
+```
+
+### 分步版（等价于流水线的各环节）
+
 ```bash
 pip install -r requirements.txt
 
-# 0.（新数据先体检）自动分析 ads_data.csv 列结构 / 采样率 / 夹爪候选
-python scripts/inspect_ads.py --rec data/recording_20260826_172240
+# 0. 批量体检 18 条 recording（文件齐全性/双机一致性/行帧比例/列映射有效性）
+python scripts/validate_data.py --data_root C:\data\gczjj
+
+# 0'.（可选）单条深检：自动分析 ads_data.csv 列结构 / 采样率 / 夹爪候选
+python scripts/inspect_ads.py --rec C:\data\gczjj\recording_20260826_172240
 
 # 1. ADS 运动学转换：ads_data.csv → kinematics.csv（按视频时间轴对齐，30 Hz）
-python scripts/convert_ads.py --config configs/default.yaml --data_root data
+python scripts/convert_ads.py --config configs/default.yaml --data_root C:\data\gczjj --skip_existing
 
-# 2. 抽帧（双相机按统一目标帧率抽帧并对齐，60fps → 10fps）
-python scripts/extract_frames.py --data_root data --fps 10
+# 2. 抽帧（双相机按统一目标帧率抽帧并对齐，60fps → 10fps，断点续抽）
+python scripts/extract_frames.py --data_root C:\data\gczjj --fps 10
 
 # 3. 子任务标注（半自动：分段打点，生成 subtasks.json）
-python scripts/make_subtask_labels.py --recording data/recording_20260826_172240
-
-# 4. 训练高层子任务规划器（纯视频即可训练）
-python scripts/train_hl.py --config configs/default.yaml
-
-# 5. 训练低层策略（LL: SRT-H 风格 ACT）—— 需要运动学数据
-python scripts/train_ll.py --config configs/default.yaml
-
-# 6. 训练完整 VAM（视频骨干 + 潜在视觉计划 + Flow Matching 动作解码器）
-python scripts/train_vam.py --config configs/default.yaml
-
-# 7. 评估 / 可视化（在留出视频上滚动预测子任务与动作块）
-python scripts/evaluate.py --config configs/default.yaml --ckpt runs/hl/best.pt
+python scripts/make_subtask_labels.py --recording C:\data\gczjj\recording_20260826_172240
 ```
 
 ## 数据量提示

@@ -58,6 +58,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--data_root", default=None, help="默认取 config data.root")
+    ap.add_argument("--skip_existing", action="store_true",
+                    help="kinematics.csv 已存在的 recording 跳过")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -73,6 +75,10 @@ def main():
     for name in sorted(os.listdir(root)):
         rroot = os.path.join(root, name)
         if not os.path.isdir(rroot):
+            continue
+        if args.skip_existing and os.path.isfile(os.path.join(rroot, "kinematics.csv")):
+            report[name] = {"status": "skip（kinematics.csv 已存在）"}
+            print(f"      {name}: 跳过（已转换）")
             continue
         r = convert_recording(rroot, cmap, cfg, gstats)
         report[name] = r

@@ -36,8 +36,12 @@ from tendon_vam.utils import cosine_lr  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
+    ap.add_argument("--data_root", default=None,
+                    help="覆盖 config 里的 data.root（如 C:////data////gczjj）")
     args = ap.parse_args()
     cfg = load_config(args.config)
+    if args.data_root:
+        cfg.data.root = args.data_root
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(cfg.data.seed)
 

@@ -109,6 +109,7 @@ class AdsCfg:
     align: str = "frame_ratio"
     out_rate: float = 30.0
     fix_quat_sign: bool = True
+    expect_cols: int = 367           # 示例数据列数（validate_data 体检用）
 
 
 @dataclass

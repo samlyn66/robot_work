@@ -42,10 +42,14 @@ from tendon_vam.video_encoder import VideoBackbone  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
+    ap.add_argument("--data_root", default=None,
+                    help="覆盖 config 里的 data.root（如 C:////data////gczjj）")
     ap.add_argument("--video_T", type=int, default=8,
                     help="视频骨干输入的过去帧数（控制频率时序窗口）")
     args = ap.parse_args()
     cfg = load_config(args.config)
+    if args.data_root:
+        cfg.data.root = args.data_root
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(cfg.data.seed)
     T = args.video_T
