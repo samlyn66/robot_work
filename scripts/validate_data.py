@@ -11,7 +11,8 @@
   4. 列映射有效性：配置的四元数列范数 ≈ 1、夹爪列有变化、位姿列在运动块前列；
   5. 是否已转换（kinematics.csv 存在）。
 
-输出：控制台汇总 + <data_root>/validate_report.json。全部 ok 才继续跑流水线。
+输出：控制台汇总 + <output_root>/validate_report.json（默认写入
+<data_root>_processed，不污染原始数据）。全部 ok 才继续跑流水线。
 """
 from __future__ import annotations
 
@@ -107,10 +108,13 @@ def check_recording(rroot: str, cmap: AdsColumnMap, cfg) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
-    ap.add_argument("--data_root", default=None)
+    ap.add_argument("--data_root", default=None, help="原始数据根目录（只读）")
+    ap.add_argument("--output_root", default=None,
+                    help="生成数据输出目录（默认 <data_root>_processed，报告写此处）")
     args = ap.parse_args()
     cfg = load_config(args.config)
     root = args.data_root or cfg.data.root
+    output_root = args.output_root or (root + "_processed")
     cmap = AdsColumnMap.from_config(cfg)
 
     names = sorted(d for d in os.listdir(root)
@@ -119,14 +123,19 @@ def main():
     print(f"发现 {len(names)} 条 recording，开始体检 …\n")
     report = {}
     for name in names:
-        rep = check_recording(os.path.join(root, name), cmap, cfg)
+        rraw = os.path.join(root, name)
+        rout = os.path.join(output_root, name)
+        rep = check_recording(rraw, cmap, cfg)
+        # 是否已转换：检查独立输出目录中的 kinematics.csv（不污染原始数据）
+        rep["converted"] = os.path.isfile(os.path.join(rout, "kinematics.csv"))
         report[name] = rep
         mark = {"ok": "✓", "warn": "△", "fail": "✗"}[rep["status"]]
         extra = ""
         if rep.get("video"):
             extra = (f" {rep['duration_s']}s | {rep['csv_rows']}行/{rep['csv_cols']}列"
                      f" | {rep['rows_per_frame']}行/帧")
-        print(f"{mark} {name}{extra}")
+        conv = " [已转换]" if rep["converted"] else ""
+        print(f"{mark} {name}{extra}{conv}")
         for p in rep.get("problems", []):
             print(f"    ✗ {p}")
         for w in rep.get("warnings", []):
@@ -136,9 +145,11 @@ def main():
     n_warn = sum(1 for r in report.values() if r["status"] == "warn")
     n_fail = sum(1 for r in report.values() if r["status"] == "fail")
     print(f"\n汇总: ok {n_ok} / warn {n_warn} / fail {n_fail}")
-    rp = os.path.join(root, "validate_report.json")
+    os.makedirs(output_root, exist_ok=True)
+    rp = os.path.join(output_root, "validate_report.json")
     with open(rp, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
+        json.dump({"data_root": root, "output_root": output_root, "recordings": report},
+                  f, ensure_ascii=False, indent=2)
     print(f"报告: {rp}")
     if n_fail:
         sys.exit(1)

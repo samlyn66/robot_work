@@ -1,16 +1,23 @@
 """双腕部相机配对数据集。
 
-数据约定（每个 recording 一个文件夹，实际 ADS 数据布局）::
+数据约定（每个 recording 一个文件夹）::
 
-    data/recording_YYYYMMDD_HHMMSS/
+    # 原始目录（只读，不被任何脚本修改）：
+    <data_root>/recording_YYYYMMDD_HHMMSS/
         ads_data.csv                        # 原始无表头运动学（367 列，~335 Hz）
         left_endo_YYYYMMDD_HHMMSS_H.264.mp4   # 1920x1080 @ 60 fps
         right_endo_YYYYMMDD_HHMMSS_H.264.mp4
+
+    # 生成目录（kinematics.csv / 帧 / 标注，由流水线写入，默认 <data_root>_processed）：
+    <data_root>_processed/recording_YYYYMMDD_HHMMSS/
         left_endo_frames/  img_000000.jpg   # extract_frames.py 产出
         right_endo_frames/ img_000000.jpg
         kinematics.csv     convert_ads.py 产出：t, l_px..l_grip, r_px..r_grip
                             （无 endo_* 列时自动退化为相对自身增量动作）
         subtasks.json      (可选) 人工子任务标注
+
+训练时传入的 --data_root 应指向「生成目录」（含 *_frames / kinematics.csv / subtasks.json），
+原始目录始终保持只读。
 
 - HL 训练：只需视频帧 + subtasks.json（纯视频模仿）。
 - LL/VAM 训练：还需要 kinematics.csv（由 ads_data.csv 转换，生成 hybrid-relative 动作块）。

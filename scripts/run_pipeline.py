@@ -31,7 +31,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--data_root", required=True,
-                    help="18 条 recording 所在目录，如 C:\\data\\gczjj")
+                    help="18 条 recording 所在原始目录（只读），如 C:\\data\\gczjj")
+    ap.add_argument("--output_root", default=None,
+                    help="生成数据输出目录（默认 <data_root>_processed，与原始数据隔离）")
     ap.add_argument("--fps", type=float, default=10.0, help="抽帧目标帧率")
     ap.add_argument("--force_convert", action="store_true",
                     help="已有 kinematics.csv 也重做转换")
@@ -40,10 +42,13 @@ def main():
     ap.add_argument("--skip_extract", action="store_true")
     args = ap.parse_args()
 
+    output_root = args.output_root or (args.data_root + "_processed")
+
     rc = 0
     if not args.skip_validate:
         rc = run("validate_data.py",
-                 ["--config", args.config, "--data_root", args.data_root])
+                 ["--config", args.config, "--data_root", args.data_root,
+                  "--output_root", output_root])
         if rc != 0:
             print("\n体检存在 fail 项：请先解决缺失/损坏的 recording，"
                   "或用 --skip_validate 跳过体检继续。")
@@ -53,19 +58,23 @@ def main():
     if not args.skip_convert:
         extra = [] if args.force_convert else ["--skip_existing"]
         run("convert_ads.py",
-            ["--config", args.config, "--data_root", args.data_root] + extra)
+            ["--config", args.config, "--data_root", args.data_root,
+             "--output_root", output_root] + extra)
 
     if not args.skip_extract:
         run("extract_frames.py",
-            ["--data_root", args.data_root, "--fps", str(args.fps)])
+            ["--data_root", args.data_root, "--output_root", output_root,
+             "--fps", str(args.fps)])
 
-    print("\n流水线结束。下一步：")
+    print("\n流水线结束。生成的 kinematics.csv / 帧 / 报告都在：")
+    print(f"    {output_root}")
+    print("\n下一步（注意：训练与标注都指向生成目录，原始目录保持不变）：")
     print("  1) 标注子任务（每条 1 分钟，标 3~5 条即可先训 HL）：")
-    print(f"     python scripts\\make_subtask_labels.py --recording {args.data_root}\\recording_xxx")
-    print("  2) 训练：")
-    print(f"     python scripts\\train_hl.py  --config {args.config} --data_root {args.data_root}")
-    print(f"     python scripts\\train_ll.py  --config {args.config} --data_root {args.data_root}")
-    print(f"     python scripts\\train_vam.py --config {args.config} --data_root {args.data_root}")
+    print(f"     python scripts\\make_subtask_labels.py --recording {output_root}\\recording_xxx")
+    print("  2) 训练（--data_root 指向生成目录）：")
+    print(f"     python scripts\\train_hl.py  --config {args.config} --data_root {output_root}")
+    print(f"     python scripts\\train_ll.py  --config {args.config} --data_root {output_root}")
+    print(f"     python scripts\\train_vam.py --config {args.config} --data_root {output_root}")
     return 0
 
 

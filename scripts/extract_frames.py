@@ -11,8 +11,8 @@
         right_endo_20260826_172246_H.264.mp4
         ads_data.csv
 
-- 按各自原始 FPS 计算目标时刻，最近帧对齐；
-- 输出到 recording/left_endo_frames、right_endo_frames；
+- 原始视频**只读**（位于 data_root/recording_xxx/），生成帧写入独立
+  output_root/recording_xxx/（默认 data_root + "_processed"），原始数据不被污染；
 - 两路帧数不一致时以较短一路为准（数据集侧处理）并打印告警；
 - 已有抽帧结果自动**续抽**（从已有帧之后继续，时间轴无缝衔接）；
   --overwrite 清空后重抽。
@@ -75,20 +75,28 @@ def extract(video_path: str, out_dir: str, target_fps: float,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data_root", default="data")
+    ap.add_argument("--data_root", default="data",
+                    help="原始数据根目录（只读，含 recording_xxx 下的视频）")
+    ap.add_argument("--output_root", default=None,
+                    help="生成帧输出目录（默认 <data_root>_processed，与原始数据隔离）")
     ap.add_argument("--fps", type=float, default=10.0)
     ap.add_argument("--max_frames", type=int, default=0, help="测试用：最多抽取帧数")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
 
+    output_root = args.output_root or (args.data_root + "_processed")
+    print(f"[抽帧] 源(只读): {args.data_root}\n       输出(生成): {output_root}")
+
     for name in sorted(os.listdir(args.data_root)):
-        rroot = os.path.join(args.data_root, name)
-        if not os.path.isdir(rroot):
+        rraw = os.path.join(args.data_root, name)
+        if not os.path.isdir(rraw):
             continue
+        rout = os.path.join(output_root, name)
         counts = {}
         for cam in ("left_endo", "right_endo"):
-            out_dir = os.path.join(rroot, f"{cam}_frames")
-            vids = find_videos(rroot, f"{cam}*")
+            os.makedirs(rout, exist_ok=True)
+            out_dir = os.path.join(rout, f"{cam}_frames")
+            vids = find_videos(rraw, f"{cam}*")
             if not vids:
                 continue
             existing = 0

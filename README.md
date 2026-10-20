@@ -32,17 +32,28 @@ Language-Conditioned Imitation Learning*（Kim et al., arXiv:2505.10251）与
 
 ## 数据目录约定（实际 ADS 数据布局）
 
+**关键原则：原始数据与生成数据物理隔离。** 所有脚本只读取原始目录、只写入独立的
+生成目录（默认 `<原始目录>_processed`），因此原始数据永不被污染，可随时重新生成。
+
 ```
-data/
-  recording_20260826_172240/
+C:\data\gczjj\                              # ← 原始目录（只读，不要改动）
+  recording_20260826_172240\
     ads_data.csv                          # 原始无表头运动学（367 列，~335 Hz）
     left_endo_20260826_172246_H.264.mp4   # 左腕部相机 1920x1080 @ 60 fps
     right_endo_20260826_172246_H.264.mp4  # 右腕部相机
+
+C:\data\gczjj_processed\                   # ← 生成目录（流水线产出，默认名 = 原始目录 + _processed）
+  recording_20260826_172240\
     left_endo_frames/   img_000000.jpg    # extract_frames.py 产出
     right_endo_frames/  img_000000.jpg
-    kinematics.csv                         # convert_ads.py 产出（30 Hz 对齐视频时间轴）
-    subtasks.json                          # 子任务标注（label 工具生成，训练 HL 时必需）
+    kinematics.csv                        # convert_ads.py 产出（30 Hz 对齐视频时间轴）
+    subtasks.json                         # 子任务标注（label 工具生成，训练 HL 时必需）
+  ads_convert_report.json                 # convert_ads 报告
+  validate_report.json                    # validate 报告
 ```
+
+> 训练 / 标注时使用的 `--data_root` 一律指向**生成目录**（如 `C:\data\gczjj_processed`），
+> 而非原始目录。可用 `--output_root` 自定义生成目录位置。
 
 ### ads_data.csv 列映射（数值逆向分析结论）
 
@@ -80,20 +91,22 @@ data/
 
 ## 快速开始
 
-**18 条完整数据（服务器 `C:\data\gczjj`）推荐流程**——一条命令跑完体检+转换+抽帧：
+**18 条完整数据（服务器 `C:\data\gczjj`）推荐流程**——一条命令跑完体检+转换+抽帧，
+生成物全部落到 `C:\data\gczjj_processed`（原始目录不被改动）：
 
 ```bash
 python scripts/run_pipeline.py --data_root C:\data\gczjj --fps 10
 ```
 
-然后标注 3~5 条（每条约 1 分钟），再训练（`--data_root` 直指数据目录，不必改 config）：
+然后标注 3~5 条（每条约 1 分钟），再训练（**`--data_root` 指向生成目录 `_processed`**，
+不必改 config）：
 
 ```bash
-python scripts/make_subtask_labels.py --recording C:\data\gczjj\recording_xxx
-python scripts/train_hl.py  --config configs/default.yaml --data_root C:\data\gczjj
-python scripts/train_ll.py  --config configs/default.yaml --data_root C:\data\gczjj
-python scripts/train_vam.py --config configs/default.yaml --data_root C:\data\gczjj
-python scripts/evaluate.py  --config configs/default.yaml --ckpt runs/hl/best.pt --data_root C:\data\gczjj
+python scripts/make_subtask_labels.py --recording C:\data\gczjj_processed\recording_xxx
+python scripts/train_hl.py  --config configs/default.yaml --data_root C:\data\gczjj_processed
+python scripts/train_ll.py  --config configs/default.yaml --data_root C:\data\gczjj_processed
+python scripts/train_vam.py --config configs/default.yaml --data_root C:\data\gczjj_processed
+python scripts/evaluate.py  --config configs/default.yaml --ckpt runs/hl/best.pt --data_root C:\data\gczjj_processed
 ```
 
 ### 分步版（等价于流水线的各环节）
@@ -102,19 +115,23 @@ python scripts/evaluate.py  --config configs/default.yaml --ckpt runs/hl/best.pt
 pip install -r requirements.txt
 
 # 0. 批量体检 18 条 recording（文件齐全性/双机一致性/行帧比例/列映射有效性）
+#    报告写入生成目录（默认 C:\data\gczjj_processed\validate_report.json）
 python scripts/validate_data.py --data_root C:\data\gczjj
 
 # 0'.（可选）单条深检：自动分析 ads_data.csv 列结构 / 采样率 / 夹爪候选
 python scripts/inspect_ads.py --rec C:\data\gczjj\recording_20260826_172240
 
 # 1. ADS 运动学转换：ads_data.csv → kinematics.csv（按视频时间轴对齐，30 Hz）
+#    写入 C:\data\gczjj_processed\recording_xxx\kinematics.csv
 python scripts/convert_ads.py --config configs/default.yaml --data_root C:\data\gczjj --skip_existing
 
 # 2. 抽帧（双相机按统一目标帧率抽帧并对齐，60fps → 10fps，断点续抽）
+#    帧写入 C:\data\gczjj_processed\recording_xxx\{left,right}_endo_frames
 python scripts/extract_frames.py --data_root C:\data\gczjj --fps 10
 
 # 3. 子任务标注（半自动：分段打点，生成 subtasks.json）
-python scripts/make_subtask_labels.py --recording C:\data\gczjj\recording_20260826_172240
+#    注意 --recording 指向生成目录里的 recording（帧已抽在那里）
+python scripts/make_subtask_labels.py --recording C:\data\gczjj_processed\recording_20260826_172240
 ```
 
 ## 数据量提示
