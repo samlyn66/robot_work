@@ -169,10 +169,20 @@ def write_kinematics_csv(kin: AdsKinematics, out_path: str) -> None:
 
 
 def find_video(rec_root: str, pattern: str) -> Optional[str]:
-    """按 glob 模式在 recording 目录里找视频（文件名含时间戳，须模糊匹配）。"""
-    import glob as _glob
-    hits = sorted(_glob.glob(os.path.join(rec_root, pattern)))
-    return hits[0] if hits else None
+    """按 glob 模式在 recording 目录里找视频（文件名含时间戳，须模糊匹配）。
+
+    递归搜索子文件夹 —— 实际数据中视频位于 left_endo\\、right_endo\\ 子目录内。
+    模式对「相对路径」匹配：*left_endo*.mp4 既匹配根目录的 left_endo_xxx.mp4，
+    也匹配 left_endo\\xxx.mp4 / left_endo\\任意子目录\\xxx.mp4。
+    """
+    import fnmatch
+    hits = []
+    for dirpath, _dirs, files in os.walk(rec_root):
+        for fn in files:
+            rel = os.path.relpath(os.path.join(dirpath, fn), rec_root)
+            if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(fn, pattern):
+                hits.append(os.path.join(dirpath, fn))
+    return sorted(hits)[0] if hits else None
 
 
 def video_info(path: str) -> Dict[str, float]:

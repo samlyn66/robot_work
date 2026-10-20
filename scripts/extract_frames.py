@@ -20,9 +20,8 @@
 from __future__ import annotations
 
 import argparse
-import glob as globmod
-import os
 import sys
+import os
 
 import cv2
 
@@ -32,11 +31,23 @@ VIDEO_EXT = (".mp4", ".avi", ".mov", ".mkv", ".mts")
 
 
 def find_videos(rroot: str, pattern: str):
+    """递归搜索 recording 目录（含 left_endo\\、right_endo\\ 子文件夹）里的视频。
+
+    模式对相对路径匹配，如 left_endo* 能匹配 left_endo\\xxx.mp4。
+    只接受视频扩展名，排除同名输出文件夹等干扰。
+    """
+    import fnmatch
     hits = []
-    for ext in VIDEO_EXT:
-        hits += globmod.glob(os.path.join(rroot, pattern.replace(".mp4", ext)))
-    # 只保留真实文件，排除同名输出文件夹（如 left_endo_frames）
-    return sorted({h for h in hits if os.path.isfile(h)})
+    for dirpath, _dirs, files in os.walk(rroot):
+        for fn in files:
+            if not fn.lower().endswith(VIDEO_EXT):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, fn), rroot)
+            if any(fnmatch.fnmatch(rel, pattern.replace(".mp4", ext))
+                   or fnmatch.fnmatch(fn, pattern.replace(".mp4", ext))
+                   for ext in VIDEO_EXT):
+                hits.append(os.path.join(dirpath, fn))
+    return sorted(set(hits))
 
 
 def extract(video_path: str, out_dir: str, target_fps: float,
